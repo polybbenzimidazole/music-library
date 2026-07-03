@@ -175,6 +175,79 @@
   }
   .fab:hover{ background:#e6bb35; }
 
+  .fab-row{
+    position:fixed;
+    right:24px;
+    bottom:24px;
+    display:flex;
+    gap:12px;
+    z-index:20;
+  }
+  .fab{ position:static; }
+  .fab.trash{
+    background:var(--surface);
+    color:var(--text-dim);
+    border:1px solid var(--surface-2);
+  }
+  .fab.trash svg{ width:22px; height:22px; }
+  .fab.trash:hover{ background:var(--surface-2); color:var(--text); }
+  .fab.trash.active{
+    background:#B33A3A;
+    color:#F3EDE0;
+    border-color:#B33A3A;
+  }
+
+  .grid.delete-active .card{ cursor:pointer; }
+  .grid.delete-active .card .cover-wrap{
+    transition:border-color 0.12s ease, box-shadow 0.12s ease;
+  }
+  .grid.delete-active .card:hover .cover-wrap{
+    border-color:#B33A3A;
+    box-shadow:0 0 0 2px rgba(179,58,58,0.35);
+    transform:none;
+  }
+
+  .delete-banner{
+    position:fixed;
+    top:0;
+    left:0;
+    right:0;
+    background:#B33A3A;
+    color:#F3EDE0;
+    font-family:'Roboto Condensed',sans-serif;
+    font-size:13px;
+    letter-spacing:0.03em;
+    text-align:center;
+    padding:8px 12px;
+    z-index:30;
+    display:none;
+  }
+  .delete-banner.show{ display:block; }
+
+  .toast{
+    position:fixed;
+    left:50%;
+    bottom:96px;
+    transform:translateX(-50%) translateY(10px);
+    background:var(--surface-2);
+    color:var(--text);
+    border:1px solid var(--ghost-border);
+    padding:10px 16px;
+    border-radius:8px;
+    font-size:13px;
+    z-index:200;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.2s ease, transform 0.2s ease;
+    max-width:80vw;
+    text-align:center;
+  }
+  .toast.show{
+    opacity:1;
+    transform:translateX(-50%) translateY(0);
+  }
+  .toast.error{ border-color:#B33A3A; color:#E8B4B4; }
+
   .empty{
     text-align:center;
     color:var(--text-dim);
@@ -280,12 +353,27 @@
   <input class="search" type="text" placeholder="Search artist or album..." id="searchInput">
 </header>
 
+<div class="delete-banner" id="deleteBanner">Delete mode — tap an album to remove it. Tap the trash icon again to cancel.</div>
+
 <main>
   <div class="grid" id="grid"></div>
   <p class="empty" id="emptyState" style="display:none;">No albums match your search.</p>
 </main>
 
-<button class="fab" id="addBtn" title="Add album">+</button>
+<div class="fab-row">
+  <button class="fab trash" id="deleteModeBtn" title="Delete mode">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"></polyline>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+      <path d="M10 11v6"></path>
+      <path d="M14 11v6"></path>
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+    </svg>
+  </button>
+  <button class="fab" id="addBtn" title="Add album">+</button>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <div class="launcher-overlay" id="launcherOverlay">
   <div class="launcher-box">
@@ -296,30 +384,17 @@
 </div>
 
 <script>
-  // --- Test data (will be replaced by a live fetch in a later step) ---
-  const libraryData = [
-    {
-      artist: "Terrorizer",
-      album: "World Downfall",
-      cover_art_url: "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/58/8a/d1/588ad105-8bc0-b7ff-33dc-269111326e4b/s05.koyqonod.tif/1000x1000bb.jpg",
-      downloaded: true,
-      year: null
-    },
-    {
-      artist: "The Suicide Machines",
-      album: "Destruction By Definition",
-      cover_art_url: "https://lastfm.freetls.fastly.net/i/u/300x300/25609563cece4084a5a52c8aa559907f.jpg",
-      downloaded: true,
-      year: null
-    },
-    {
-      artist: "underscores",
-      album: "U",
-      cover_art_url: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/8c/a4/b1/8ca4b15b-9ea9-b43a-0c1e-0748f0f3bb80/810090098739_Cover.jpg/1000x1000bb.jpg",
-      downloaded: true,
-      year: null
-    }
-  ];
+  // Register the service worker for image caching (also required for PWA installability).
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((err) => {
+        console.error('Service worker registration failed:', err);
+      });
+    });
+  }
+
+  // Populated by loadLibrary() from the backend once a script ID is configured.
+  let libraryData = [];
 
   function renderGrid(data){
     const grid = document.getElementById('grid');
@@ -335,6 +410,8 @@
     data.forEach(item => {
       const card = document.createElement('div');
       card.className = 'card' + (item.downloaded ? '' : ' ghost');
+      card.dataset.artist = item.artist;
+      card.dataset.album = item.album;
 
       const coverWrap = document.createElement('div');
       coverWrap.className = 'cover-wrap';
@@ -370,8 +447,80 @@
     return div.innerHTML;
   }
 
-  // Basic client-side search/filter (wired now against static data;
-  // will filter against live data once fetch is added)
+  // --- Backend connection: deployment ID prompt + localStorage ---
+  const LIBRARY_ID_KEY = 'libraryScriptId';
+
+  function ensureLibraryId(){
+    let id = localStorage.getItem(LIBRARY_ID_KEY);
+    if(id) return id;
+
+    const input = window.prompt(
+      "Enter your Apps Script deployment ID or full /exec URL:"
+    );
+    if(!input) return null;
+
+    // Accept either a bare ID or a full pasted URL and extract the ID either way.
+    const match = input.match(/\/s\/([^\/]+)\/exec/);
+    id = match ? match[1] : input.trim();
+
+    localStorage.setItem(LIBRARY_ID_KEY, id);
+    return id;
+  }
+
+  function getScriptUrl(){
+    const id = localStorage.getItem(LIBRARY_ID_KEY);
+    if(!id) return null;
+    return `https://script.google.com/macros/s/${id}/exec`;
+  }
+
+  function buildPath(artist, album){
+    return `/storage/emulated/0/musiclibrary/${artist}/${album}`;
+  }
+
+  async function loadLibrary(){
+    const url = getScriptUrl();
+    if(!url){
+      showToast('No backend connected.', true);
+      return;
+    }
+    try{
+      const res = await fetch(url);
+      const data = await res.json();
+      libraryData = Array.isArray(data) ? data : [];
+      renderGrid(libraryData);
+    }catch(err){
+      showToast('Could not load your library.', true);
+    }
+  }
+
+  async function postAction(action, artist, album){
+    const url = getScriptUrl();
+    if(!url){
+      showToast('No backend connected.', true);
+      return null;
+    }
+    const path = buildPath(artist, album);
+    const fullUrl = `${url}?action=${encodeURIComponent(action)}&path=${encodeURIComponent(path)}`;
+    try{
+      const res = await fetch(fullUrl, { method: 'POST' });
+      return await res.json();
+    }catch(err){
+      showToast('Request failed. Check your connection.', true);
+      return null;
+    }
+  }
+
+  let toastTimer = null;
+  function showToast(message, isError){
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.toggle('error', !!isError);
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+
+  // Client-side search/filter over whatever's currently loaded from the backend
   document.getElementById('searchInput').addEventListener('input', (e) => {
     const q = e.target.value.toLowerCase().trim();
     const filtered = libraryData.filter(item =>
@@ -486,13 +635,69 @@
     });
   }
 
-  function selectAlbum(item){
-    // Selection is wired up; sending it to the library (POST) is the next step.
-    console.log('Selected album:', item.artistName, '-', item.collectionName);
+  async function selectAlbum(item){
     closeLauncher();
+    showToast(`Adding "${item.collectionName}"...`);
+    const result = await postAction('add', item.artistName, item.collectionName);
+    if(!result) return;
+
+    if(result.status === 'success'){
+      showToast(`Added "${result.album}" by ${result.artist}.`);
+    } else if(result.status === 'ignored'){
+      showToast(`"${result.album}" is already in your library.`);
+    } else {
+      showToast(result.message || 'Something went wrong.', true);
+    }
+    loadLibrary();
   }
 
-  renderGrid(libraryData);
+  // --- Delete mode ---
+  const deleteModeBtn = document.getElementById('deleteModeBtn');
+  const deleteBanner = document.getElementById('deleteBanner');
+  const gridEl = document.getElementById('grid');
+  let deleteMode = false;
+
+  function toggleDeleteMode(){
+    deleteMode = !deleteMode;
+    deleteModeBtn.classList.toggle('active', deleteMode);
+    deleteBanner.classList.toggle('show', deleteMode);
+    gridEl.classList.toggle('delete-active', deleteMode);
+  }
+
+  deleteModeBtn.addEventListener('click', toggleDeleteMode);
+
+  gridEl.addEventListener('click', async (e) => {
+    if(!deleteMode) return;
+    const card = e.target.closest('.card');
+    if(!card) return;
+
+    const { artist, album } = card.dataset;
+    if(!window.confirm(`Remove "${album}" by ${artist} from your library?`)) return;
+
+    showToast(`Removing "${album}"...`);
+    const result = await postAction('remove', artist, album);
+    if(!result) return;
+
+    if(result.status === 'error'){
+      showToast(result.message || 'Could not remove album.', true);
+    } else {
+      showToast(`Removed "${album}".`);
+    }
+    loadLibrary();
+  });
+
+  // --- Init ---
+  async function init(){
+    const id = ensureLibraryId();
+    if(!id){
+      showToast('No backend connected. Reload to try again.', true);
+      renderGrid([]);
+      return;
+    }
+    await loadLibrary();
+  }
+
+  init();
 </script>
 
 </body>
