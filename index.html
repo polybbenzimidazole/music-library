@@ -1,1 +1,286 @@
-<h1> hello</h1> 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Library</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14110D">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14110D;
+    --surface:#1D1912;
+    --surface-2:#262019;
+    --accent:#D4A72C;
+    --accent-dim:#8A6F1F;
+    --text:#F3EDE0;
+    --text-dim:#9C9184;
+    --ghost-border:#4A4335;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;
+    min-height:100vh;
+  }
+
+  header{
+    position:sticky;
+    top:0;
+    z-index:10;
+    background:linear-gradient(var(--bg) 80%, transparent);
+    padding:24px 20px 16px;
+    display:flex;
+    align-items:center;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  h1{
+    font-family:'Oswald',sans-serif;
+    font-weight:700;
+    font-size:22px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    margin:0;
+    white-space:nowrap;
+  }
+  .search{
+    flex:1;
+    min-width:160px;
+    background:var(--surface);
+    border:1px solid var(--surface-2);
+    border-radius:8px;
+    padding:10px 14px;
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+  }
+  .search::placeholder{ color:var(--text-dim); }
+  .search:focus{ outline:none; border-color:var(--accent-dim); }
+
+  main{
+    padding:8px 20px 100px;
+    max-width:1200px;
+    margin:0 auto;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));
+    gap:20px;
+  }
+
+  .card{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    cursor:default;
+  }
+  .cover-wrap{
+    position:relative;
+    aspect-ratio:1/1;
+    border-radius:6px;
+    overflow:hidden;
+    background:var(--surface);
+    border:1px solid var(--surface-2);
+    transition:transform 0.15s ease;
+  }
+  .card:hover .cover-wrap{ transform:translateY(-2px); }
+  .cover-wrap img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+
+  /* not-downloaded = ghost sleeve: dashed border, desaturated, empty */
+  .card.ghost .cover-wrap{
+    border:1.5px dashed var(--ghost-border);
+    background:var(--surface);
+  }
+  .card.ghost .cover-wrap img{
+    filter:grayscale(85%) brightness(0.55);
+    opacity:0.75;
+  }
+  .tag{
+    position:absolute;
+    top:6px;
+    left:6px;
+    font-family:'Oswald',sans-serif;
+    font-size:9px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    padding:3px 7px;
+    border-radius:4px;
+    background:rgba(20,17,13,0.85);
+    color:var(--accent);
+    border:1px solid var(--accent-dim);
+  }
+  .tag.wishlist{
+    color:var(--text-dim);
+    border-color:var(--ghost-border);
+  }
+
+  .meta{ padding:0 2px; }
+  .album{
+    font-family:'Oswald',sans-serif;
+    font-weight:600;
+    font-size:14px;
+    line-height:1.25;
+    margin:0 0 2px;
+  }
+  .card.ghost .album{ color:var(--text-dim); }
+  .artist{
+    font-size:12.5px;
+    color:var(--text-dim);
+    margin:0;
+  }
+  .year{
+    font-size:11px;
+    color:var(--ghost-border);
+    margin:2px 0 0;
+  }
+
+  .fab{
+    position:fixed;
+    right:24px;
+    bottom:24px;
+    width:56px;
+    height:56px;
+    border-radius:50%;
+    background:var(--accent);
+    color:var(--bg);
+    border:none;
+    font-size:28px;
+    font-weight:600;
+    line-height:1;
+    cursor:pointer;
+    box-shadow:0 4px 14px rgba(0,0,0,0.4);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .fab:hover{ background:#e6bb35; }
+
+  .empty{
+    text-align:center;
+    color:var(--text-dim);
+    padding:60px 20px;
+    font-size:14px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Library</h1>
+  <input class="search" type="text" placeholder="Search artist or album..." id="searchInput">
+</header>
+
+<main>
+  <div class="grid" id="grid"></div>
+  <p class="empty" id="emptyState" style="display:none;">No albums match your search.</p>
+</main>
+
+<button class="fab" id="addBtn" title="Add album">+</button>
+
+<script>
+  // --- Test data (will be replaced by a live fetch in a later step) ---
+  const libraryData = [
+    {
+      artist: "Terrorizer",
+      album: "World Downfall",
+      cover_art_url: "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/58/8a/d1/588ad105-8bc0-b7ff-33dc-269111326e4b/s05.koyqonod.tif/1000x1000bb.jpg",
+      downloaded: true,
+      year: null
+    },
+    {
+      artist: "The Suicide Machines",
+      album: "Destruction By Definition",
+      cover_art_url: "https://lastfm.freetls.fastly.net/i/u/300x300/25609563cece4084a5a52c8aa559907f.jpg",
+      downloaded: true,
+      year: null
+    },
+    {
+      artist: "underscores",
+      album: "U",
+      cover_art_url: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/8c/a4/b1/8ca4b15b-9ea9-b43a-0c1e-0748f0f3bb80/810090098739_Cover.jpg/1000x1000bb.jpg",
+      downloaded: true,
+      year: null
+    }
+  ];
+
+  function renderGrid(data){
+    const grid = document.getElementById('grid');
+    const empty = document.getElementById('emptyState');
+    grid.innerHTML = '';
+
+    if(data.length === 0){
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    data.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'card' + (item.downloaded ? '' : ' ghost');
+
+      const coverWrap = document.createElement('div');
+      coverWrap.className = 'cover-wrap';
+
+      const img = document.createElement('img');
+      img.src = item.cover_art_url;
+      img.alt = item.album + ' cover';
+      img.loading = 'lazy';
+      coverWrap.appendChild(img);
+
+      const tag = document.createElement('span');
+      tag.className = 'tag' + (item.downloaded ? '' : ' wishlist');
+      tag.textContent = item.downloaded ? 'Downloaded' : 'Wishlist';
+      coverWrap.appendChild(tag);
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.innerHTML = `
+        <p class="album">${escapeHtml(item.album)}</p>
+        <p class="artist">${escapeHtml(item.artist)}</p>
+        ${item.year ? `<p class="year">${item.year}</p>` : ''}
+      `;
+
+      card.appendChild(coverWrap);
+      card.appendChild(meta);
+      grid.appendChild(card);
+    });
+  }
+
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // Basic client-side search/filter (wired now against static data;
+  // will filter against live data once fetch is added)
+  document.getElementById('searchInput').addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    const filtered = libraryData.filter(item =>
+      item.artist.toLowerCase().includes(q) ||
+      item.album.toLowerCase().includes(q)
+    );
+    renderGrid(filtered);
+  });
+
+  // Placeholder: will open the add-album flow in a later step
+  document.getElementById('addBtn').addEventListener('click', () => {
+    alert('Add-album flow not wired up yet.');
+  });
+
+  renderGrid(libraryData);
+</script>
+
+</body>
+</html>
