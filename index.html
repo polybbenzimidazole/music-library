@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#14110D">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;500;600;700&family=Roboto:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#14110D;
@@ -25,7 +25,7 @@
     margin:0;
     background:var(--bg);
     color:var(--text);
-    font-family:'Inter',system-ui,sans-serif;
+    font-family:'Roboto',system-ui,sans-serif;
     min-height:100vh;
   }
 
@@ -41,7 +41,7 @@
     flex-wrap:wrap;
   }
   h1{
-    font-family:'Oswald',sans-serif;
+    font-family:'Roboto Condensed',sans-serif;
     font-weight:700;
     font-size:22px;
     letter-spacing:0.08em;
@@ -57,7 +57,7 @@
     border-radius:8px;
     padding:10px 14px;
     color:var(--text);
-    font-family:'Inter',sans-serif;
+    font-family:'Roboto',sans-serif;
     font-size:14px;
   }
   .search::placeholder{ color:var(--text-dim); }
@@ -72,6 +72,15 @@
     display:grid;
     grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));
     gap:20px;
+  }
+  @media (max-width: 600px){
+    .grid{
+      grid-template-columns:repeat(3, 1fr);
+      gap:10px;
+    }
+    .tag{ font-size:8px; padding:2px 5px; }
+    .album{ font-size:11.5px; }
+    .artist{ font-size:10.5px; }
   }
 
   .card{
@@ -110,7 +119,7 @@
     position:absolute;
     top:6px;
     left:6px;
-    font-family:'Oswald',sans-serif;
+    font-family:'Roboto Condensed',sans-serif;
     font-size:9px;
     letter-spacing:0.06em;
     text-transform:uppercase;
@@ -127,7 +136,7 @@
 
   .meta{ padding:0 2px; }
   .album{
-    font-family:'Oswald',sans-serif;
+    font-family:'Roboto Condensed',sans-serif;
     font-weight:600;
     font-size:14px;
     line-height:1.25;
@@ -172,6 +181,96 @@
     padding:60px 20px;
     font-size:14px;
   }
+
+  /* --- Launcher (add-album search) --- */
+  .launcher-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(10,8,6,0.6);
+    backdrop-filter:blur(4px);
+    -webkit-backdrop-filter:blur(4px);
+    z-index:100;
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+    padding-top:12vh;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.15s ease;
+  }
+  .launcher-overlay.open{
+    opacity:1;
+    pointer-events:auto;
+  }
+  .launcher-box{
+    width:min(520px, 90vw);
+    background:var(--surface);
+    border:1px solid var(--surface-2);
+    border-radius:12px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.5);
+    overflow:hidden;
+    transform:translateY(-8px);
+    transition:transform 0.15s ease;
+  }
+  .launcher-overlay.open .launcher-box{ transform:translateY(0); }
+  .launcher-input{
+    width:100%;
+    background:transparent;
+    border:none;
+    border-bottom:1px solid var(--surface-2);
+    color:var(--text);
+    font-family:'Roboto',sans-serif;
+    font-size:16px;
+    padding:16px 18px;
+  }
+  .launcher-input::placeholder{ color:var(--text-dim); }
+  .launcher-input:focus{ outline:none; }
+
+  .launcher-results{
+    max-height:50vh;
+    overflow-y:auto;
+  }
+  .launcher-item{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:10px 14px;
+    cursor:pointer;
+  }
+  .launcher-item img{
+    width:42px;
+    height:42px;
+    border-radius:4px;
+    object-fit:cover;
+    flex-shrink:0;
+    background:var(--surface-2);
+  }
+  .launcher-item-text{ min-width:0; }
+  .launcher-item .li-album{
+    font-family:'Roboto Condensed',sans-serif;
+    font-weight:600;
+    font-size:13.5px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .launcher-item .li-artist{
+    font-size:12px;
+    color:var(--text-dim);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .launcher-item:hover,
+  .launcher-item.active{
+    background:var(--surface-2);
+  }
+  .launcher-hint{
+    padding:12px 14px;
+    font-size:12px;
+    color:var(--text-dim);
+    text-align:center;
+  }
 </style>
 </head>
 <body>
@@ -187,6 +286,14 @@
 </main>
 
 <button class="fab" id="addBtn" title="Add album">+</button>
+
+<div class="launcher-overlay" id="launcherOverlay">
+  <div class="launcher-box">
+    <input class="launcher-input" id="launcherInput" type="text"
+           placeholder="Search for an album to add..." autocomplete="off">
+    <div class="launcher-results" id="launcherResults"></div>
+  </div>
+</div>
 
 <script>
   // --- Test data (will be replaced by a live fetch in a later step) ---
@@ -274,10 +381,116 @@
     renderGrid(filtered);
   });
 
-  // Placeholder: will open the add-album flow in a later step
-  document.getElementById('addBtn').addEventListener('click', () => {
-    alert('Add-album flow not wired up yet.');
+  // --- Launcher: search iTunes to pick an album to add ---
+  const overlay = document.getElementById('launcherOverlay');
+  const launcherInput = document.getElementById('launcherInput');
+  const launcherResults = document.getElementById('launcherResults');
+
+  let itunesResults = [];
+  let activeIndex = -1;
+  let debounceTimer = null;
+
+  function openLauncher(){
+    overlay.classList.add('open');
+    launcherInput.value = '';
+    launcherResults.innerHTML = '';
+    itunesResults = [];
+    activeIndex = -1;
+    setTimeout(() => launcherInput.focus(), 50);
+  }
+
+  function closeLauncher(){
+    overlay.classList.remove('open');
+  }
+
+  document.getElementById('addBtn').addEventListener('click', openLauncher);
+
+  overlay.addEventListener('click', (e) => {
+    if(e.target === overlay) closeLauncher();
   });
+
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape' && overlay.classList.contains('open')) closeLauncher();
+  });
+
+  launcherInput.addEventListener('input', (e) => {
+    const query = e.target.value.trim();
+    clearTimeout(debounceTimer);
+
+    if(query.length === 0){
+      launcherResults.innerHTML = '';
+      itunesResults = [];
+      activeIndex = -1;
+      return;
+    }
+
+    debounceTimer = setTimeout(() => searchItunes(query), 300);
+  });
+
+  launcherInput.addEventListener('keydown', (e) => {
+    if(itunesResults.length === 0) return;
+
+    if(e.key === 'ArrowDown'){
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, itunesResults.length - 1);
+      highlightActive();
+    } else if(e.key === 'ArrowUp'){
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      highlightActive();
+    } else if(e.key === 'Enter' && activeIndex >= 0){
+      e.preventDefault();
+      selectAlbum(itunesResults[activeIndex]);
+    }
+  });
+
+  async function searchItunes(query){
+    launcherResults.innerHTML = '<p class="launcher-hint">Searching...</p>';
+    try{
+      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=8`;
+      const res = await fetch(url);
+      const data = await res.json();
+      itunesResults = data.results || [];
+      activeIndex = -1;
+      renderLauncherResults();
+    }catch(err){
+      launcherResults.innerHTML = '<p class="launcher-hint">Search failed. Check your connection.</p>';
+    }
+  }
+
+  function renderLauncherResults(){
+    if(itunesResults.length === 0){
+      launcherResults.innerHTML = '<p class="launcher-hint">No matches found.</p>';
+      return;
+    }
+    launcherResults.innerHTML = '';
+    itunesResults.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'launcher-item';
+      row.innerHTML = `
+        <img src="${item.artworkUrl100}" alt="">
+        <div class="launcher-item-text">
+          <p class="li-album">${escapeHtml(item.collectionName)}</p>
+          <p class="li-artist">${escapeHtml(item.artistName)}</p>
+        </div>
+      `;
+      row.addEventListener('click', () => selectAlbum(item));
+      row.addEventListener('mouseenter', () => { activeIndex = i; highlightActive(); });
+      launcherResults.appendChild(row);
+    });
+  }
+
+  function highlightActive(){
+    [...launcherResults.children].forEach((el, i) => {
+      el.classList.toggle('active', i === activeIndex);
+    });
+  }
+
+  function selectAlbum(item){
+    // Selection is wired up; sending it to the library (POST) is the next step.
+    console.log('Selected album:', item.artistName, '-', item.collectionName);
+    closeLauncher();
+  }
 
   renderGrid(libraryData);
 </script>
