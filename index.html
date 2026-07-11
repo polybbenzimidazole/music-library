@@ -543,10 +543,6 @@
     return `https://script.google.com/macros/s/${id}/exec`;
   }
 
-  function buildPath(artist, album){
-    return `/storage/emulated/0/musiclibrary/${artist}/${album}`;
-  }
-
   async function loadLibrary(){
     const url = getScriptUrl();
     if(!url){
@@ -578,8 +574,7 @@
       showToast('No backend connected.', true);
       return null;
     }
-    const path = buildPath(artist, album);
-    const fullUrl = `${url}?action=${encodeURIComponent(action)}&path=${encodeURIComponent(path)}`;
+    const fullUrl = `${url}?action=${encodeURIComponent(action)}&artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`;
     try{
       const res = await fetch(fullUrl, { method: 'POST' });
       return await res.json();
