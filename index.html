@@ -95,6 +95,10 @@
     flex-direction:column;
     gap:8px;
     cursor:default;
+    padding:8px;
+    border-radius:10px;
+    background-color:transparent;
+    transition:background-color 0.4s ease;
   }
   .cover-wrap{
     position:relative;
@@ -144,16 +148,17 @@
     font-size:14px;
     line-height:1.25;
     margin:0 0 2px;
+    color:var(--tile-text, var(--text));
   }
-  .card.ghost .album{ color:var(--text-dim); }
+  .card.ghost .album{ color:var(--tile-text, var(--text-dim)); }
   .artist{
     font-size:12.5px;
-    color:var(--text-dim);
+    color:var(--tile-text-dim, var(--text-dim));
     margin:0;
   }
   .year{
     font-size:11px;
-    color:var(--ghost-border);
+    color:var(--tile-text-dim, var(--ghost-border));
     margin:2px 0 0;
   }
 
@@ -444,7 +449,66 @@
       card.appendChild(coverWrap);
       card.appendChild(meta);
       grid.appendChild(card);
+
+      tintCardFromCover(card, item.cover_art_url);
     });
+  }
+
+  // --- Cover-color tile tinting ---
+  // Samples a downscaled copy of the cover art on a hidden <canvas> to get an
+  // average color, then tints the card and flips text to dark if the result
+  // is bright enough to hurt contrast. Runs async per-card so it never blocks
+  // the initial grid render. Some CDNs don't send CORS headers required for
+  // canvas pixel access — if that happens, extraction just quietly no-ops
+  // and the card keeps its default dark styling. Nothing else depends on it.
+  function getAverageColor(url){
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous'; // only affects this hidden sampling image, never the visible <img>
+      img.onload = () => {
+        try{
+          const size = 12;
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, size, size);
+          const data = ctx.getImageData(0, 0, size, size).data;
+
+          let r = 0, g = 0, b = 0, count = 0;
+          for(let i = 0; i < data.length; i += 4){
+            r += data[i]; g += data[i+1]; b += data[i+2]; count++;
+          }
+          resolve({
+            r: Math.round(r / count),
+            g: Math.round(g / count),
+            b: Math.round(b / count)
+          });
+        }catch(err){
+          resolve(null); // canvas tainted by CORS — skip tinting for this cover
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  }
+
+  async function tintCardFromCover(card, coverUrl){
+    const color = await getAverageColor(coverUrl);
+    if(!color) return;
+
+    const { r, g, b } = color;
+    card.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+
+    // YIQ brightness estimate — standard quick heuristic for text contrast decisions
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    if(brightness > 150){
+      card.style.setProperty('--tile-text', '#14110D');
+      card.style.setProperty('--tile-text-dim', '#4A4335');
+    } else {
+      card.style.setProperty('--tile-text', '#F3EDE0');
+      card.style.setProperty('--tile-text-dim', 'rgba(243,237,224,0.72)');
+    }
   }
 
   function escapeHtml(str){
@@ -493,10 +557,19 @@
       const res = await fetch(url);
       const data = await res.json();
       libraryData = Array.isArray(data) ? data : [];
+      sortLibraryData(libraryData);
       renderGrid(libraryData);
     }catch(err){
       showToast('Could not load your library.', true);
     }
+  }
+
+  function sortLibraryData(data){
+    data.sort((a, b) => {
+      const artistCompare = a.artist.localeCompare(b.artist, undefined, { sensitivity: 'base' });
+      if(artistCompare !== 0) return artistCompare;
+      return a.album.localeCompare(b.album, undefined, { sensitivity: 'base' });
+    });
   }
 
   async function postAction(action, artist, album){
